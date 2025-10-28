@@ -3,6 +3,7 @@
 # Data Engineering Assessment (DEA) Solution
 
 This document serves as the comprehensive final documentation for the technical assessment, covering data modeling, ETL implementation, and best practices.
+Main project folder is in Data_Modeling_Query_Design->Clickhouse
 
 ## 1. Project Overview, Setup, and Execution Instructions
 
@@ -56,6 +57,7 @@ The project files are organized to separate core execution code from configurati
 | **`/Concept_Question_Answers`** | **Documentation (Q4.a)** | Contains detailed theoretical explanations that supplement the `README.md`. |
 | **`/ERD`** | **Documentation (Q1.a)** | Contains the visual ERD asset (`ERD_EWallet_System.png`) used for design verification. |
 | **`.gitignore`** | **Exclusion** | Excludes local environment files (`venv_dea`, `__pycache__`) and Docker data volumes, ensuring a clean repository. |
+
 
 ***
 
