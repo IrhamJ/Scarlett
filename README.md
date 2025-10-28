@@ -147,3 +147,130 @@ GROUP BY
 ORDER BY
     total_transaction_count DESC;
 ```
+
+---
+
+## 3. Solutions for ETL Pipeline and Incremental Processing
+
+This section details the implementation of the Python-based Mini-ETL Pipeline, demonstrating clear functional modularity, business logic transformation, and a robust incremental loading mechanism.
+
+### 3.1 Mini-ETL Pipeline Implementation
+
+The core logic resides in the modular Python script, `etl_pipeline.py`. It demonstrates separation of concerns (Extract, Transform, Load) for clarity and maintainability.
+
+| Stage | Action | Implementation in `etl_pipeline.py` |
+| :--- | :--- | :--- |
+| **Extract** | Pulls incremental transactional data from the MySQL source. | `extract_data()` function uses `mysql-connector-python` and the *watermark* logic. |
+| **Transform** | Applies business logic for categorization and key preparation. | `transform_data()` function uses **Pandas** to: 1. **Categorize Amount** (e.g., 'High Value'). 2. **Filter** out `FAILED` transactions. 3. **Mock Surrogate Keys** for OLAP readiness. |
+| **Load** | Writes transformed data to the analytical destination. | `load_data()` function uses the **ClickHouse Driver**'s `client.execute()` method for efficient bulk insertion into `fact_sales`. |
+
+### 3.2 Incremental Load and Checkpointing
+
+The pipeline is designed for efficiency and reliability by implementing a robust incremental loading mechanism.
+
+#### Checkpointing Mechanism
+
+* **Method:** The pipeline uses a dedicated **`checkpoint` table in MySQL** to track the last successful synchronization time. This method guarantees persistent and reliable state management between runs.
+* **Tracking Logic (Code Implementation):**
+    * The `get_last_watermark()` function reads the `last_synced_at` field from the checkpoint table, which acts as the **lower bound** of the extraction window.
+    * The `update_watermark()` function uses an **UPSERT** statement (`INSERT ON DUPLICATE KEY UPDATE`) to atomically update the timestamp **only after a successful data load**, preventing the same batch from being missed or duplicated if a failure occurs mid-process.
+
+#### Incremental Extraction Query
+
+The extraction query utilizes the watermark to pull only new data:
+
+```sql
+SELECT ... FROM transactions
+WHERE transaction_time > '{last_sync}'
+  AND transaction_time <= '{current_run_time}' 
+ORDER BY transaction_time ASC;
+````
+
+-----
+
+### 3.3 Expected Result and Validation
+
+The successful initial run validates the complete transformation logic by loading filtered and categorized data into ClickHouse:
+
+| Transaction ID | User ID | Amount | Expected Amount Category | Expected Load Status |
+| :--- | :--- | :--- | :--- | :--- |
+| TX1001 | 1 | 50,000 | Medium Value | SUCCESS |
+| TX1003 | 2 | 150,000 | High Value | SUCCESS |
+| **TX1004** | 2 | 10,000 | Low Value | **FILTERED OUT (FAILED)** |
+| TX1008 | 2 | 65,000 | Medium Value | SUCCESS |
+
+**Validation:** The initial run successfully loaded **4** records (excluding the FAILED record), and the incremental test run successfully pulled and loaded **3 subsequent new records**, validating the overall **idempotent** and **incremental** design.
+
+```
+```
+
+## 4. Solution for CDC & Streaming Simulation
+
+This section demonstrates the understanding and implementation of Change Data Capture (CDC) principles for near real-time data processing, utilizing ClickHouse's capabilities.
+
+### 4.1 Conceptual Understanding
+
+* **What is CDC (Change Data Capture)?**
+    I define CDC as a pattern used to track and capture row-level changes (Inserts, Updates, and Deletes) occurring in a source transactional database by reading its transaction log (e.g., MySQL's binary log). This approach treats the database as a high-fidelity data stream, capturing modifications with minimal latency and impact on the source system's performance.
+
+* **When Should You Use Batch vs. CDC?**
+    The decision relies on the business need for **data freshness** and **auditability**. I recommend **Batch Processing** when the goal is historical analysis or reporting that can tolerate delays (hours/days), as it is simpler and less resource-intensive. Conversely, I must employ **CDC** when **near real-time data freshness is mandatory** (e.g., fraud detection or live dashboards). CDC is the superior method because it reliably captures and propagates all change types (I, U, D) to the destination system instantly, ensuring the analytical data reflects the current operational state.
+
+### 4.2 Streaming Simulation Implementation
+
+The solution uses the `cdc_stream.py` script to simulate a streaming consumer, processing change events and performing an upsert operation into the destination ClickHouse table (`cdc_transactions`).
+
+* **Simulation Strategy:** The pipeline simulates reading *change events* by consuming a **JSON array file (`cdc_events.json`)**. This acts as a reliable *stand-in* for a live Kafka stream.
+
+* **Processing and Loading:**
+    The Python script reads the JSON events, converts the *version timestamp* (`_version`) into a proper `datetime` object, and performs a **bulk load** into the `cdc_transactions` table. This table uses the **`ReplacingMergeTree` engine**, which is designed to handle *upsert* logic natively in an analytical data warehouse.
+
+* **Handling Failures and Duplicates (Idempotency):**
+    My approach relies on both application logic and native database features:
+    1.  **Duplication/Upsert:** The `cdc_transactions` table's `ReplacingMergeTree` engine handles duplication by guaranteeing that only the record with the highest **`_version`** (timestamp) remains for any given `transaction_id`. The subsequent `OPTIMIZE TABLE` command consolidates these changes.
+    2.  **Failure Handling (Conceptual):** The code uses a `try...except` block around the ClickHouse load statement. In a real Kafka setup, if the load fails, the consumer would **not commit its offset**, forcing Kafka to **re-deliver the failed events** on the next run, thereby guaranteeing *at-least-once* delivery and preventing data loss.
+    
+-----
+
+## 5\. Implementation of Code Quality, Dockerization and Pytest
+
+This section details where Python best practices and production-readiness enhancements (Dockerization, Unit Tests) were applied across the existing codebase (`etl_pipeline.py`, `cdc_stream.py`).
+
+### 5.1 Python Best Practices
+
+Best practices were executed within the code to ensure high quality, traceability, and robust error handling.
+
+#### A. Code Modularity and Logging
+
+  * **Modularity:** The logic is strictly separated into distinct, single-responsibility functions (e.g., `extract_data()`, `transform_data()`, `load_data()`) across the pipeline.
+  * **Logging:** All status outputs (`print()`) were replaced with the Python **`logging`** module (`logger.info`, `logger.error`). This provides structured **traceability** of the pipeline's start time, status, and failure points.
+
+#### B. Error Handling
+
+  * Specific `try...except` blocks were implemented around critical database operations:
+      * **Connection Errors:** Handled initially to fail fast if MySQL or ClickHouse is unreachable.
+      * **SQL/Load Errors:** Catching specific database exceptions, such as **`ClickHouseError`**, to ensure that data loss is logged and the pipeline exits gracefully.
+      * **Parsing Errors:** Handled specific `ValueError` in the CDC stream to skip corrupted records without crashing the entire flow.
+
+### 5.2 Bonus Implementation Summary
+
+The following bonuses demonstrate readiness for a professional production environment.
+
+#### A. Dockerization
+
+  * **Implementation:** The entire ETL code and its Python dependencies were packaged into a dedicated Docker image and service (`etl_service`).
+  * **Goal:** Guarantees that the pipeline is **portable** and runs with consistent dependencies, utilizing Docker's internal networking (e.g., using `mysql_source` instead of `localhost`).
+  * **Execution Script:**
+    ```bash
+    docker compose up --build -d
+    ```
+
+#### B. Unit Tests
+
+  * **Implementation File:** **`test_etl_logic.py`**.
+  * **Goal:** Successfully ran **2 unit tests** using **`pytest`** to prove that the core business logic (`transform_data` function) is reliable and independent of database connections.
+  * **Focus:** Testing the custom **amount categorization** and **Surrogate Key mocking** using simulated Pandas DataFrames.
+  * **Execution Script:**
+    ```bash
+    pytest
+    ```
