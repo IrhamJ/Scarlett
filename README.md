@@ -68,7 +68,7 @@ The source schema follows **Third Normal Form (3NF)** for operational integrity.
 
   * **Entity Relationship Diagram (ERD):**
 
-    \\
+    ![ERD E-Wallet System](ERD_EWallet_System.png)
 
   * **Relationship Logic:** All relationships are **One-to-Many Mandatory** from the dimension tables (`USERS`, `MERCHANTS`) to the fact table (`TRANSACTIONS`).
 
