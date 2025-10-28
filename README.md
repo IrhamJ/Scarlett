@@ -12,16 +12,16 @@ The solution establishes a modern ELT stack where **MySQL** is the transactional
 
 | Dependency | Purpose |
 | :--- | :--- |
-| **`pandas`** | Data transformation and manipulation (in-memory). |
+| **`pandas`** | Data transformation and manipulation. |
 | **`mysql-connector-python`** | Programmatic connection to the MySQL Source. |
 | **`clickhouse-driver`** | Programmatic bulk data loading to ClickHouse. |
-| **`pymongo`** | Programmatic connection to the MongoDB Source (Conceptual). |
-| **`dagster`, `dagster-webserver`** | Orchestration framework (for future integration). |
+| **`pymongo`** | Programmatic connection to the MongoDB Source. |
+| **`dagster`, `dagster-webserver`** | Orchestration framework for future integration. |
 | **`pytest`** | Unit testing for transformation logic. |
 
 ### 1.2 Setup and Running Instructions
 
-The entire environment is containerized. **All services are run once** via Docker Compose.
+The entire environment is containerized. All services are run once via Docker Compose.
 
 | Step | Action | Command |
 | :--- | :--- | :--- |
@@ -53,7 +53,7 @@ The core `etl_pipeline.py` script is designed to run the **Incremental Load** by
 ### 2.2 Project Structure and Code Quality (Q5.a)
 
 * **Code Modularity:** Logic is separated into distinct modules (`etl_pipeline.py`, `cdc-stream.py`, `test_etl_logic.py`).
-* **Best Practices:** All execution scripts utilize Python's **`logging`** module for structured *traceability* and feature **robust *error handling*** (specific MySQL/ClickHouse exceptions).
+* **Best Practices:** All execution scripts utilize Python's **`logging`** module for structured *traceability* and feature error handling (specific MySQL/ClickHouse exceptions).
 * **Dockerization:** The ETL code is packaged into the **`python_etl_pipeline:latest`** Docker image, ensuring portability and consistent dependencies.
 
 ---
@@ -96,10 +96,15 @@ The destination schema uses a **Star Schema** model, optimized for high-speed an
 The process utilizes an **ELT** workflow, mapping and transforming data for analytical efficiency.
 
   * **Relational Source (MySQL) to ClickHouse:**
-    I would transform OLTP MySQL data into ClickHouse OLAP data by using an **Incremental Load** mechanism. Python scripts utilize a **watermark** (e.g., the `created_at` or `updated_at` attribute) to pull only new or updated records. During transformation, I perform **denormalization** by looking up and generating **Surrogate Keys** for the respective dimension tables before loading them into the `fact_sales` table. The `transaction_time` attribute is also split into two in `fact_sales` to become `transaction_time` (`DateTime`) and `transaction_date` (`Date`) to enable faster analytical queries through **data partitioning**.
+    I would transform OLTP MySQL Data into Clickhouse OLAP Data by using Incremental Load mechanism where Python scripts utilize a watermark, like created_at 
+    attribute to only pull new or updated records. Before loading them into the fact_sales table, I would perform denormalization by replacing the transactional
+    primary keys (user_id, merchant_id) with Surrogate Keys. The transaction_time attributes also split into two in fact_sales to become transaction_time
+    (DateTime) and transaction_date (Date) so the analytical queries in Clickhouse become a faster process.
 
   * **Non-Relational Source (MongoDB) to ClickHouse (Conceptual):**
-    I would extract non-relational data using the **`pymongo` driver**. I use a Python script to convert the JSON structured data into rows and columns (**data flattening**). The converted data is then loaded into a Fact table or Staging area in ClickHouse. The Python script will also include **data validation** and **type casting** in order to ensure data quality and schema compliance before the final load, guaranteeing that the data can be reliably analyzed in ClickHouse.
+    I would extract non-relational data using pymongo driver. I use Python script to convert the JSON structured data into rows and columns, after that the
+    converted data is loaded into a Fact table in ClickHouse, the Python script will also include data validation in order to ensure data quality before loading,
+    so the data remain consistent and could be analyzed in a data warehouse like Clickhouse.
 
 -----
 
@@ -152,7 +157,7 @@ ORDER BY
 
 ## 3. Solutions for ETL Pipeline and Incremental Processing
 
-This section details the implementation of the Python-based Mini-ETL Pipeline, demonstrating clear functional modularity, business logic transformation, and a robust incremental loading mechanism.
+This section details the implementation of the Python-based Mini-ETL Pipeline, demonstrating clear functional modularity, business logic transformation, and a  incremental loading mechanism.
 
 ### 3.1 Mini-ETL Pipeline Implementation
 
@@ -166,7 +171,7 @@ The core logic resides in the modular Python script, `etl_pipeline.py`. It demon
 
 ### 3.2 Incremental Load and Checkpointing
 
-The pipeline is designed for efficiency and reliability by implementing a robust incremental loading mechanism.
+The pipeline is designed for efficiency and reliability by implementing a incremental loading mechanism.
 
 #### Checkpointing Mechanism
 
@@ -211,14 +216,24 @@ This section demonstrates the understanding and implementation of Change Data Ca
 ### 4.1 Conceptual Understanding
 
 * **What is CDC (Change Data Capture)?**
-    I define CDC as a pattern used to track and capture row-level changes (Inserts, Updates, and Deletes) occurring in a source transactional database by reading its transaction log (e.g., MySQL's binary log). This approach treats the database as a high-fidelity data stream, capturing modifications with minimal latency and impact on the source system's performance.
+    I would define Change Data Capture (CDC) as a set of software patterns designed to detect and track data modifications—specifically inserts, updates, and
+    deletes—occurring in a source transactional database. Instead of periodically scanning entire tables (like in a full batch load), I use CDC to read the
+    database's transaction log (the commit log or binary log). This allows me to capture the changes as they happen, effectively treating the database as a 
+    high-fidelity data stream. This ensures minimal latency and virtually eliminates impact on the performance of the source system.
 
 * **When Should You Use Batch vs. CDC?**
-    The decision relies on the business need for **data freshness** and **auditability**. I recommend **Batch Processing** when the goal is historical analysis or reporting that can tolerate delays (hours/days), as it is simpler and less resource-intensive. Conversely, I must employ **CDC** when **near real-time data freshness is mandatory** (e.g., fraud detection or live dashboards). CDC is the superior method because it reliably captures and propagates all change types (I, U, D) to the destination system instantly, ensuring the analytical data reflects the current operational state.
+    The decision between using Batch Processing and Change Data Capture (CDC) relies entirely on the organization's requirement for data freshness and the 
+    need for auditability. I would recommend Batch Processing when the analytical goal is to process large volumes of data for historical trends or reports 
+    that can tolerate latency, typically measured in hours or days. Batching is simpler to implement and places less continuous strain on the source 
+    transactional database.However, I must employ CDC when there is a critical need for near real-time data freshness—meaning downstream applications, such as
+    fraud detection, customer personalization, or live dashboards, must react to transactions within minutes or seconds. CDC is the superior method for 
+    maintaining a truly accurate data replica because it reliably captures all three types of data change (inserts, updates, and deletes), ensuring that the
+    analytical system reflects the current state of the source with minimal delay. In high-volume systems like our e-wallet, a hybrid approach is often ideal
+    using CDC for critical, fast-moving tables, and leveraging efficient incremental batching for less time-sensitive facts and dimensions.
 
 ### 4.2 Streaming Simulation Implementation
 
-The solution uses the `cdc_stream.py` script to simulate a streaming consumer, processing change events and performing an upsert operation into the destination ClickHouse table (`cdc_transactions`).
+The solution uses the `cdc-stream.py` script to simulate a streaming consumer, processing change events and performing an upsert operation into the destination ClickHouse table (`cdc_transactions`).
 
 * **Simulation Strategy:** The pipeline simulates reading *change events* by consuming a **JSON array file (`cdc_events.json`)**. This acts as a reliable *stand-in* for a live Kafka stream.
 
@@ -226,19 +241,23 @@ The solution uses the `cdc_stream.py` script to simulate a streaming consumer, p
     The Python script reads the JSON events, converts the *version timestamp* (`_version`) into a proper `datetime` object, and performs a **bulk load** into the `cdc_transactions` table. This table uses the **`ReplacingMergeTree` engine**, which is designed to handle *upsert* logic natively in an analytical data warehouse.
 
 * **Handling Failures and Duplicates (Idempotency):**
-    My approach relies on both application logic and native database features:
-    1.  **Duplication/Upsert:** The `cdc_transactions` table's `ReplacingMergeTree` engine handles duplication by guaranteeing that only the record with the highest **`_version`** (timestamp) remains for any given `transaction_id`. The subsequent `OPTIMIZE TABLE` command consolidates these changes.
-    2.  **Failure Handling (Conceptual):** The code uses a `try...except` block around the ClickHouse load statement. In a real Kafka setup, if the load fails, the consumer would **not commit its offset**, forcing Kafka to **re-deliver the failed events** on the next run, thereby guaranteeing *at-least-once* delivery and preventing data loss.
+    My approach to handling failures and duplication relies on a combination of application logic (Python's try/except) and the destination database's native
+    features (ClickHouse's ReplacingMergeTree). For duplication and data reconciliation (Insert/Update/Delete operations), the pipeline uses the cdc_transactions
+    table with the ReplacingMergeTree engine, keyed on transaction_id and versioned by the _version timestamp. This design ensures idempotency: when duplicated
+    events arrive, ClickHouse automatically retains only the record with the highest _version, effectively handling upserts. A final OPTIMIZE TABLE command is
+    executed to consolidate these changes. For failures during the load process, the Python script employs a robust try...except block around the critical
+    ch_client.execute() statement. In a real-world Kafka environment, a failure caught here would prevent the Consumer from committing its offset, causing 
+    Kafka to re-deliver the failed events on the next run, thus guaranteeing at-least-once delivery and preventing data loss.
     
 -----
 
 ## 5\. Implementation of Code Quality, Dockerization and Pytest
 
-This section details where Python best practices and production-readiness enhancements (Dockerization, Unit Tests) were applied across the existing codebase (`etl_pipeline.py`, `cdc_stream.py`).
+This section details where Python best practices and production-readiness enhancements (Dockerization, Unit Tests) were applied across the existing codebase (`etl_pipeline.py`, `cdc-stream.py`).
 
 ### 5.1 Python Best Practices
 
-Best practices were executed within the code to ensure high quality, traceability, and robust error handling.
+Best practices were executed within the code to ensure high quality, traceability, and error handling.
 
 #### A. Code Modularity and Logging
 
