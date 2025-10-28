@@ -40,6 +40,23 @@ The core `etl_pipeline.py` script is designed to run the **Incremental Load** by
 | **Full Load** (Run 1) | **Reset the watermark** to force a full data pull. | `UPDATE checkpoint SET last_synced_at = '1970-01-01 00:00:00' WHERE pipeline_name = 'transactions_elt';` |
 | **Incremental Load** (Run N) | Load new data, relying on the automatically updated timestamp. | *No manual update needed. Pipeline uses existing `last_synced_at`.* |
 
+## 1.4 Project Structure and File Organization
+
+The project files are organized to separate core execution code from configuration, setup scripts, and documentation assets. The execution context for all Docker commands is the root directory.
+
+| Folder/File | Type | Purpose in the Assessment |
+| :--- | :--- | :--- |
+| **`etl_pipeline.py`** | **Core Logic (Q2/Q3)** | Contains the modular Python logic for the incremental ELT process (Extract, Transform, Load, Checkpointing). |
+| **`cdc_stream.py`** | **Core Code (Q4.b)** | Python script for the CDC simulation, processing JSON change events and performing upsert in ClickHouse. |
+| **`test_etl_logic.py`** | **Unit Test (Bonus 2)** | Pytest file used to validate the core `transform_data` logic using mocked Pandas DataFrames. |
+| **`requirements.txt`** | **Configuration** | Lists all Python dependencies (`pandas`, `clickhouse-driver`, `dagster`, etc.) used by the `Dockerfile`. |
+| **`Dockerfile`**, **`docker-compose.yml`** | **Configuration** | Used to build and run the entire containerized infrastructure, including the `etl_service`. |
+| **`DDL-*.sql`** | **Setup/DDL (Q1.a)** | SQL scripts for creating schemas in MySQL (OLTP) and ClickHouse (OLAP Star Schema). |
+| **`seeding-data-*.sql`** | **Setup/DML** | Scripts to populate source and destination databases with dummy data for testing. |
+| **`/Concept_Question_Answers`** | **Documentation (Q4.a)** | Contains detailed theoretical explanations that supplement the `README.md`. |
+| **`/ERD`** | **Documentation (Q1.a)** | Contains the visual ERD asset (`ERD_EWallet_System.png`) used for design verification. |
+| **`.gitignore`** | **Exclusion** | Excludes local environment files (`venv_dea`, `__pycache__`) and Docker data volumes, ensuring a clean repository. |
+
 ***
 
 ## 2. Assumptions and Design Choices
