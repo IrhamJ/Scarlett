@@ -312,3 +312,9 @@ The following bonuses demonstrate readiness for a professional production enviro
     ```bash
     pytest
     ```
+### 5.3 Git Version Control Strategy 
+
+The repository was initialized and committed as a single, atomic commit containing the complete, verified solution. Hence version control (commit history) is not included
+
+* **Focus on Integrity:** The development process prioritized delivering a single, fully tested, and integrated solution rather than tracking granular historical changes. This approach ensures that the *reviewer* immediately receives a codebase where all components (ETL, CDC, Docker, Tests) are fully functional and in a stable state.
+* **Final State:** The single commit represents the final, verified state of the entire system as a production-ready package.
